@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>即時文字雲</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      background: #0f0c29;
+      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    header {
+      width: 100%;
+      padding: 24px 32px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .title-group h1 {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+
+    .title-group p {
+      font-size: 14px;
+      color: rgba(255,255,255,0.5);
+      margin-top: 4px;
+    }
+
+    .stats {
+      display: flex;
+      gap: 20px;
+    }
+
+    .stat {
+      text-align: center;
+      background: rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 10px 20px;
+    }
+
+    .stat .num {
+      font-size: 26px;
+      font-weight: 700;
+      color: #a78bfa;
+    }
+
+    .stat .label {
+      font-size: 12px;
+      color: rgba(255,255,255,0.5);
+      margin-top: 2px;
+    }
+
+    .live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+      color: #fca5a5;
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .dot {
+      width: 8px; height: 8px;
+      background: #ef4444;
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.8); }
+    }
+
+    .canvas-container {
+      flex: 1;
+      width: 100%;
+      max-width: 1100px;
+      padding: 24px 24px 0;
+      position: relative;
+    }
+
+    #wordcloud-canvas {
+      width: 100%;
+      height: 520px;
+      border-radius: 20px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .empty-state {
+      position: absolute;
+      inset: 24px 24px 0;
+      border-radius: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      color: rgba(255,255,255,0.3);
+      pointer-events: none;
+    }
+
+    .empty-state .emoji { font-size: 48px; }
+    .empty-state p { font-size: 16px; }
+
+    .word-list-section {
+      width: 100%;
+      max-width: 1100px;
+      padding: 20px 24px 32px;
+    }
+
+    .word-list-section h2 {
+      font-size: 14px;
+      color: rgba(255,255,255,0.4);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 12px;
+    }
+
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tag {
+      background: rgba(167, 139, 250, 0.15);
+      border: 1px solid rgba(167, 139, 250, 0.3);
+      color: #c4b5fd;
+      border-radius: 999px;
+      padding: 6px 14px;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .tag .count {
+      background: rgba(167, 139, 250, 0.3);
+      border-radius: 999px;
+      padding: 1px 7px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(0.9); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    .back-link {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: rgba(255,255,255,0.1);
+      color: white;
+      text-decoration: none;
+      padding: 10px 18px;
+      border-radius: 999px;
+      font-size: 14px;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.15);
+      transition: background 0.2s;
+    }
+
+    .back-link:hover { background: rgba(255,255,255,0.2); }
+
+    #status {
+      font-size: 13px;
+      color: rgba(255,255,255,0.4);
+      padding: 8px 0 0 0;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="title-group">
+      <h1>☁️ 即時文字雲</h1>
+      <p id="status">連接中…</p>
+    </div>
+    <div class="stats">
+      <div class="stat">
+        <div class="num" id="totalCount">0</div>
+        <div class="label">總回應數</div>
+      </div>
+      <div class="stat">
+        <div class="num" id="uniqueCount">0</div>
+        <div class="label">不重複詞彙</div>
+      </div>
+    </div>
+    <div class="live-badge">
+      <div class="dot"></div>
+      即時更新
+    </div>
+  </header>
+
+  <div class="canvas-container">
+    <canvas id="wordcloud-canvas"></canvas>
+    <div class="empty-state" id="emptyState">
+      <div class="emoji">💬</div>
+      <p>等待第一筆投稿…</p>
+    </div>
+  </div>
+
+  <div class="word-list-section">
+    <h2>所有關鍵字</h2>
+    <div class="tags" id="tagList"></div>
+  </div>
+
+  <a href="index.html" class="back-link">✏️ 投稿頁面</a>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/wordcloud2.js/1.2.2/wordcloud2.min.js"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+    import { getFirestore, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBtyW0pm5uoTPXdNtButsbNApmIL3uuUgQ",
+      authDomain: "fir-test-4f91d.firebaseapp.com",
+      projectId: "fir-test-4f91d",
+      storageBucket: "fir-test-4f91d.firebasestorage.app",
+      messagingSenderId: "794618146191",
+      appId: "1:794618146191:web:dc18e1abaf910862ebeffa"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const col = collection(db, "wordcloud_words");
+
+    const canvas = document.getElementById("wordcloud-canvas");
+    const emptyState = document.getElementById("emptyState");
+    const tagList = document.getElementById("tagList");
+    const totalCountEl = document.getElementById("totalCount");
+    const uniqueCountEl = document.getElementById("uniqueCount");
+    const statusEl = document.getElementById("status");
+
+    let renderTimer = null;
+
+    function countWords(docs) {
+      const freq = {};
+      docs.forEach(doc => {
+        const w = (doc.data().word || "").trim();
+        if (w) freq[w] = (freq[w] || 0) + 1;
+      });
+      return freq;
+    }
+
+    function renderCloud(freq) {
+      const entries = Object.entries(freq).sort((a, b) => b[1] - a[1]);
+      if (entries.length === 0) {
+        emptyState.style.display = "flex";
+        return;
+      }
+      emptyState.style.display = "none";
+
+      const maxFreq = entries[0][1];
+      const list = entries.map(([word, count]) => [word, Math.max(18, Math.round(count / maxFreq * 90) + 18)]);
+
+      const colors = ["#a78bfa","#60a5fa","#34d399","#f472b6","#fbbf24","#f87171","#38bdf8","#fb923c"];
+
+      // 調整 canvas 尺寸
+      canvas.width = canvas.offsetWidth;
+      canvas.height = canvas.offsetHeight;
+
+      WordCloud(canvas, {
+        list,
+        gridSize: Math.round(16 * canvas.width / 1024),
+        weightFactor: 1,
+        fontFamily: 'Microsoft JhengHei, Segoe UI, sans-serif',
+        color: () => colors[Math.floor(Math.random() * colors.length)],
+        rotateRatio: 0.3,
+        rotationSteps: 2,
+        backgroundColor: "transparent",
+        shrinkToFit: true,
+        drawOutOfBound: false,
+      });
+    }
+
+    function renderTags(freq) {
+      const entries = Object.entries(freq).sort((a, b) => b[1] - a[1]);
+      tagList.innerHTML = "";
+      entries.forEach(([word, count]) => {
+        const tag = document.createElement("div");
+        tag.className = "tag";
+        tag.innerHTML = `${word} <span class="count">${count}</span>`;
+        tagList.appendChild(tag);
+      });
+    }
+
+    onSnapshot(col, (snap) => {
+      const freq = countWords(snap.docs);
+      const total = snap.size;
+      const unique = Object.keys(freq).length;
+
+      totalCountEl.textContent = total;
+      uniqueCountEl.textContent = unique;
+      statusEl.textContent = "即時同步中 · 最後更新 " + new Date().toLocaleTimeString("zh-TW");
+
+      renderTags(freq);
+
+      // debounce 渲染文字雲（避免連續觸發）
+      clearTimeout(renderTimer);
+      renderTimer = setTimeout(() => renderCloud(freq), 300);
+    }, (err) => {
+      statusEl.textContent = "連接失敗：" + err.message;
+    });
+
+    // 視窗縮放重繪
+    window.addEventListener("resize", () => {
+      clearTimeout(renderTimer);
+      renderTimer = setTimeout(() => {
+        const snap_freq = {};
+        document.querySelectorAll(".tag").forEach(tag => {
+          const word = tag.childNodes[0].textContent.trim();
+          const count = parseInt(tag.querySelector(".count").textContent);
+          snap_freq[word] = count;
+        });
+        if (Object.keys(snap_freq).length) renderCloud(snap_freq);
+      }, 300);
+    });
+  </script>
+</body>
+</html>
