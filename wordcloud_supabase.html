@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>文字雲</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/wordcloud2.js/1.2.2/wordcloud2.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #050d1a;
+      --surface: rgba(255,255,255,0.05);
+      --border: rgba(255,255,255,0.1);
+      --accent: #00d4aa;
+      --accent2: #0ea5e9;
+      --text: #e2e8f0;
+      --muted: rgba(255,255,255,0.4);
+    }
+
+    body {
+      min-height: 100vh;
+      background: var(--bg);
+      background-image:
+        radial-gradient(ellipse 80% 50% at 20% -10%, rgba(0,212,170,0.12), transparent),
+        radial-gradient(ellipse 60% 40% at 80% 110%, rgba(14,165,233,0.12), transparent);
+      font-family: 'Segoe UI', 'Microsoft JhengHei', sans-serif;
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px 60px;
+      gap: 32px;
+    }
+
+    /* ── Header ── */
+    .header {
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .header p {
+      font-size: 15px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    /* ── Input card ── */
+    .input-card {
+      width: 100%;
+      max-width: 520px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 28px 28px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      backdrop-filter: blur(12px);
+    }
+
+    .input-row {
+      display: flex;
+      gap: 10px;
+    }
+
+    input[type="text"] {
+      flex: 1;
+      background: rgba(255,255,255,0.06);
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      padding: 13px 18px;
+      font-size: 16px;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.2s, background 0.2s;
+      font-family: inherit;
+    }
+
+    input[type="text"]::placeholder { color: rgba(255,255,255,0.25); }
+    input[type="text"]:focus {
+      border-color: var(--accent);
+      background: rgba(0,212,170,0.06);
+    }
+
+    .btn-submit {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #050d1a;
+      font-weight: 700;
+      font-size: 15px;
+      border: none;
+      border-radius: 12px;
+      padding: 13px 22px;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+      white-space: nowrap;
+      font-family: inherit;
+    }
+
+    .btn-submit:hover { opacity: 0.88; }
+    .btn-submit:active { transform: scale(0.97); }
+    .btn-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .input-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .hint { font-size: 12px; color: var(--muted); }
+
+    .msg {
+      font-size: 13px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      display: none;
+    }
+
+    .msg.success {
+      background: rgba(0,212,170,0.12);
+      border: 1px solid rgba(0,212,170,0.3);
+      color: #6ee7d4;
+    }
+
+    .msg.error {
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.25);
+      color: #fca5a5;
+    }
+
+    /* ── Stats + toggle bar ── */
+    .control-bar {
+      width: 100%;
+      max-width: 860px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .stats {
+      display: flex;
+      gap: 12px;
+    }
+
+    .stat {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 8px 18px;
+      text-align: center;
+    }
+
+    .stat .num {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .stat .label {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 1px;
+    }
+
+    .btn-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 20px;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      font-family: inherit;
+    }
+
+    .btn-toggle:hover {
+      border-color: var(--accent);
+      background: rgba(0,212,170,0.06);
+    }
+
+    .btn-toggle.active {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .toggle-icon {
+      font-size: 18px;
+      transition: transform 0.3s;
+    }
+
+    /* ── Cloud section ── */
+    .cloud-section {
+      width: 100%;
+      max-width: 860px;
+      overflow: hidden;
+      transition: max-height 0.45s cubic-bezier(0.4,0,0.2,1), opacity 0.35s ease;
+      max-height: 700px;
+      opacity: 1;
+    }
+
+    .cloud-section.hidden {
+      max-height: 0;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .cloud-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    #wordcloud-canvas {
+      width: 100%;
+      height: 460px;
+      display: block;
+      border-radius: 20px;
+    }
+
+    .empty-state {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: var(--muted);
+      pointer-events: none;
+    }
+
+    .empty-state .emoji { font-size: 44px; }
+    .empty-state p { font-size: 15px; }
+
+    /* ── Tags ── */
+    .tags-section {
+      width: 100%;
+      max-width: 860px;
+    }
+
+    .tags-title {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 12px;
+    }
+
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .tag {
+      background: rgba(0,212,170,0.08);
+      border: 1px solid rgba(0,212,170,0.2);
+      color: #6ee7d4;
+      border-radius: 999px;
+      padding: 5px 14px;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      animation: popIn 0.3s cubic-bezier(0.34,1.56,0.64,1);
+    }
+
+    .tag .count {
+      background: rgba(0,212,170,0.2);
+      border-radius: 999px;
+      padding: 1px 7px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    @keyframes popIn {
+      from { opacity: 0; transform: scale(0.8); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+
+    /* ── Live dot ── */
+    .live {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .dot {
+      width: 7px; height: 7px;
+      background: var(--accent);
+      border-radius: 50%;
+      animation: pulse 1.8s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.3; transform: scale(0.75); }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>✦ 文字雲</h1>
+    <p>輸入你的詞彙，加入共同的文字雲</p>
+  </div>
+
+  <div class="input-card">
+    <div class="input-row">
+      <input type="text" id="wordInput" placeholder="輸入詞彙…" maxlength="20" autocomplete="off">
+      <button class="btn-submit" id="submitBtn" onclick="submitWord()">送出</button>
+    </div>
+    <div class="input-meta">
+      <span class="hint">最多 20 個字</span>
+      <span class="live"><span class="dot"></span>即時同步</span>
+    </div>
+    <div class="msg success" id="successMsg">✓ 已加入文字雲！</div>
+    <div class="msg error" id="errorMsg"></div>
+  </div>
+
+  <div class="control-bar">
+    <div class="stats">
+      <div class="stat">
+        <div class="num" id="totalCount">0</div>
+        <div class="label">總投稿數</div>
+      </div>
+      <div class="stat">
+        <div class="num" id="uniqueCount">0</div>
+        <div class="label">不重複詞彙</div>
+      </div>
+    </div>
+    <button class="btn-toggle active" id="toggleBtn" onclick="toggleCloud()">
+      <span class="toggle-icon" id="toggleIcon">☁️</span>
+      <span id="toggleText">隱藏文字雲</span>
+    </button>
+  </div>
+
+  <div class="cloud-section" id="cloudSection">
+    <div class="cloud-box">
+      <canvas id="wordcloud-canvas"></canvas>
+      <div class="empty-state" id="emptyState">
+        <div class="emoji">☁️</div>
+        <p>等待第一個詞彙…</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="tags-section">
+    <div class="tags-title">所有詞彙</div>
+    <div class="tags" id="tagList"></div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://yzgnrnrpgsotuavblmdt.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_CpJYJXxdyE9HOHfZ7_HYYw_lwvJ2vr3';
+    const { createClient } = supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let wordFreq = {};
+    let cloudVisible = true;
+    let renderTimer = null;
+
+    const canvas    = document.getElementById('wordcloud-canvas');
+    const emptyEl   = document.getElementById('emptyState');
+    const tagList   = document.getElementById('tagList');
+    const totalEl   = document.getElementById('totalCount');
+    const uniqueEl  = document.getElementById('uniqueCount');
+    const successEl = document.getElementById('successMsg');
+    const errorEl   = document.getElementById('errorMsg');
+    const cloudSec  = document.getElementById('cloudSection');
+    const toggleBtn = document.getElementById('toggleBtn');
+    const toggleTxt = document.getElementById('toggleText');
+    const toggleIco = document.getElementById('toggleIcon');
+
+    // ── Toggle ──
+    function toggleCloud() {
+      cloudVisible = !cloudVisible;
+      cloudSec.classList.toggle('hidden', !cloudVisible);
+      toggleBtn.classList.toggle('active', cloudVisible);
+      toggleTxt.textContent = cloudVisible ? '隱藏文字雲' : '顯示文字雲';
+      toggleIco.textContent = cloudVisible ? '☁️' : '👁️';
+      if (cloudVisible) scheduleRender();
+    }
+
+    // ── Render word cloud ──
+    const COLORS = ['#00d4aa','#0ea5e9','#a78bfa','#f472b6','#fbbf24','#34d399','#fb923c','#60a5fa'];
+
+    function renderCloud() {
+      const entries = Object.entries(wordFreq).sort((a, b) => b[1] - a[1]);
+      if (entries.length === 0) { emptyEl.style.display = 'flex'; return; }
+      emptyEl.style.display = 'none';
+
+      const maxFreq = entries[0][1];
+      const list = entries.map(([w, c]) => [w, Math.max(20, Math.round(c / maxFreq * 88) + 20)]);
+
+      canvas.width  = canvas.offsetWidth  || 860;
+      canvas.height = canvas.offsetHeight || 460;
+
+      WordCloud(canvas, {
+        list,
+        gridSize: Math.round(14 * canvas.width / 860),
+        weightFactor: 1,
+        fontFamily: 'Microsoft JhengHei, Segoe UI, sans-serif',
+        color: () => COLORS[Math.floor(Math.random() * COLORS.length)],
+        rotateRatio: 0.25,
+        rotationSteps: 2,
+        backgroundColor: 'transparent',
+        shrinkToFit: true,
+        drawOutOfBound: false,
+      });
+    }
+
+    function scheduleRender() {
+      clearTimeout(renderTimer);
+      renderTimer = setTimeout(() => { if (cloudVisible) renderCloud(); }, 350);
+    }
+
+    // ── Render tags ──
+    function renderTags() {
+      const entries = Object.entries(wordFreq).sort((a, b) => b[1] - a[1]);
+      tagList.innerHTML = '';
+      entries.forEach(([word, count]) => {
+        const el = document.createElement('div');
+        el.className = 'tag';
+        el.innerHTML = `${word}<span class="count">${count}</span>`;
+        tagList.appendChild(el);
+      });
+      totalEl.textContent  = Object.values(wordFreq).reduce((s, c) => s + c, 0);
+      uniqueEl.textContent = Object.keys(wordFreq).length;
+    }
+
+    // ── Initial load ──
+    async function loadWords() {
+      const { data, error } = await db.from('words').select('word');
+      if (error) { console.error(error); return; }
+      wordFreq = {};
+      data.forEach(({ word }) => {
+        const w = word.trim();
+        if (w) wordFreq[w] = (wordFreq[w] || 0) + 1;
+      });
+      renderTags();
+      scheduleRender();
+    }
+
+    // ── Realtime subscription ──
+    db.channel('words-changes')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'words' }, payload => {
+        const w = (payload.new.word || '').trim();
+        if (w) {
+          wordFreq[w] = (wordFreq[w] || 0) + 1;
+          renderTags();
+          scheduleRender();
+        }
+      })
+      .subscribe();
+
+    // ── Submit ──
+    async function submitWord() {
+      const input  = document.getElementById('wordInput');
+      const btn    = document.getElementById('submitBtn');
+      const word   = input.value.trim();
+
+      successEl.style.display = 'none';
+      errorEl.style.display   = 'none';
+
+      if (!word) {
+        errorEl.textContent    = '⚠ 請先輸入詞彙';
+        errorEl.style.display  = 'block';
+        return;
+      }
+
+      btn.disabled     = true;
+      btn.textContent  = '送出中…';
+
+      const { error } = await db.from('words').insert({ word });
+
+      btn.disabled    = false;
+      btn.textContent = '送出';
+
+      if (error) {
+        errorEl.textContent   = '❌ 送出失敗：' + error.message;
+        errorEl.style.display = 'block';
+      } else {
+        input.value            = '';
+        successEl.style.display = 'block';
+        setTimeout(() => { successEl.style.display = 'none'; }, 3000);
+      }
+    }
+
+    // Enter 鍵送出
+    document.getElementById('wordInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter') submitWord();
+    });
+
+    // 視窗縮放重繪
+    window.addEventListener('resize', scheduleRender);
+
+    // 啟動
+    loadWords();
+  </script>
+</body>
+</html>
